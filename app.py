@@ -3,12 +3,22 @@ from docx import Document
 from docx.shared import Inches, Pt
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 import datetime
 import requests
 
 # Konfigurasi Halaman
 st.set_page_config(page_title="ALADIN-app", layout="wide")
+
+# CSS Kustom untuk menyembunyikan instruksi format bawaan Streamlit
+st.markdown("""
+<style>
+[data-testid="stFileUploaderDropzoneInstructions"] {
+    display: none;
+}
+</style>
+""", unsafe_allow_html=True)
 
 st.title("ALADIN")
 st.write("ALADIN (Aplikasi Laporan perjalanan Dinas) merupakan aplikasi otomasi pembuatan Laporan Perjalanan Dinas Pegawai di BPS Kota Solok")
@@ -118,7 +128,7 @@ if dates:
     st.subheader(f"2. Detail Kegiatan Harian ({len(dates)} Hari)")
     for i, dt in enumerate(dates):
         tanggal_str = format_tanggal_indo(dt, include_hari=True)
-        with st.expander(f"Detail - {tanggal_str}", expanded=(i==0)):
+        with st.expander(f"Detail - {tanggal_str}", expanded=(i == 0)):
             # Fitur Input Jumlah Kegiatan Per Hari
             jml_kegiatan = st.number_input(f"Berapa kegiatan pada {tanggal_str}?", min_value=1, max_value=10, value=1, key=f"jml_{i}")
             
@@ -130,7 +140,15 @@ if dates:
                 with c1: jam_mulai = st.text_input("Jam Mulai (cth: 08:00)", key=f"jm_{i}_{j}")
                 with c2: jam_akhir = st.text_input("Jam Akhir (cth: 16:00)", key=f"ja_{i}_{j}")
                 uraian = st.text_area("Uraian", key=f"ur_{i}_{j}")
-                foto = st.file_uploader("Upload Dokumentasi", type=['png', 'jpg', 'jpeg'], key=f"ft_{i}_{j}")
+                
+                # Upload dokumentasi dengan petunjuk eksplisit
+                foto = st.file_uploader(
+                    "Upload Dokumentasi", 
+                    type=['png', 'jpg', 'jpeg'], 
+                    help="Format berkas yang didukung: PNG, JPG, JPEG (Maks. 200MB)",
+                    key=f"ft_{i}_{j}"
+                )
+                st.caption("Batas ukuran 200MB per berkas • PNG, JPG, JPEG")
                 
                 # Jika kegiatan ke-2 dst, kosongkan kolom tanggal agar rapi di tabel
                 tgl_tabel = tanggal_str if j == 0 else ""
@@ -158,16 +176,16 @@ if st.button("Generate Laporan", type="primary"):
                     doc = Document(template_bytes)
                     
                     if len(dates) > 1:
-                        waktu_str = f"{format_tanggal_indo(dates[0])} - {format_tanggal_indo(dates[-1])}"
+                        waktu_str = f"{format_tanggal_indo(dates[0])} s.d. {format_tanggal_indo(dates[-1])}"
                     else:
                         waktu_str = format_tanggal_indo(dates[0])
                     
                     replacements = {
                         "<kegiatan>": kegiatan.upper() if kegiatan else "", 
                         "<nama>": nama, 
-                        "<jabatan>": jabatan,
+                        "<jabatan>": jabatan, 
                         "<golongan>": golongan, 
-                        "<nomorsurat>": nomor_surat,
+                        "<nomorsurat>": nomor_surat, 
                         "<tujuan>": tujuan, 
                         "<waktu>": waktu_str
                     }
@@ -229,21 +247,26 @@ if st.button("Generate Laporan", type="primary"):
                                 run1 = p1.add_run(jam_teks)
                                 run1.font.name, run1.font.size = saved_font_name, saved_font_size
                             
+                            # Kolom Uraian (dibuat JUSTIFY)
                             if jumlah_kolom > 2:
                                 p2 = row_cells[2].paragraphs[0]
+                                p2.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
                                 run2 = p2.add_run(hari['uraian'])
                                 run2.font.name, run2.font.size = saved_font_name, saved_font_size
                             
+                            # Kolom Foto (dibuat JUSTIFY pada paragraf penampung gambar)
                             if hari['foto']:
                                 if jumlah_kolom > 3:
                                     p3 = row_cells[3].paragraphs[0]
+                                    p3.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
                                     run3 = p3.add_run()
                                     run3.add_picture(hari['foto'], width=Inches(3))
                                 elif jumlah_kolom == 3:
-                                    p2 = row_cells[2].add_paragraph()
-                                    run_pic = p2.add_run()
+                                    p2_foto = row_cells[2].add_paragraph()
+                                    p2_foto.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                                    run_pic = p2_foto.add_run()
                                     run_pic.add_picture(hari['foto'], width=Inches(3))
-                                
+                        
                         for row in tabel_kegiatan.rows:
                             for cell in row.cells:
                                 for p in cell.paragraphs:
@@ -253,6 +276,11 @@ if st.button("Generate Laporan", type="primary"):
                     doc.save(bio)
                     bio.seek(0)
                     st.success("Laporan Berhasil Dibuat!")
-                    st.download_button("📥 Download Laporan Perjalanan Dinas", bio, f"Laporan_Perjalandinas_{nama.replace(' ','_')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                    st.download_button(
+                        "📥 Download Laporan Perjalanan Dinas", 
+                        bio, 
+                        f"Laporan_Perjalandinas_{nama.replace(' ', '_')}.docx", 
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
                 except Exception as e:
                     st.error(f"Error saat memproses dokumen: {e}")
